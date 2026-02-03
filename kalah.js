@@ -770,6 +770,8 @@ app.get('/stats', (req, res) => {
     res.json(stats);
 });
 
+require('dotenv').config(); // если используете dotenv
+const SERVER_URL = process.env.SERVER_URL || 'http://localhost:3000';
 // Главная страница с игрой (обновленный HTML с анимациями)
 app.get('/', async (req, res) => {
     const html = `
@@ -1177,22 +1179,54 @@ app.get('/', async (req, res) => {
             padding: 10px;
         }
         
-        .stone {
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
-            position: absolute;
-            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
-        }
-        
-        .stone.player1 {
-            background: radial-gradient(circle at 30% 30%, var(--stone-color1), #ff4757);
-        }
-        
-        .stone.player2 {
-            background: radial-gradient(circle at 30% 30%, var(--stone-color2), #00d2d3);
-        }
+.stone {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    position: absolute;
+    box-shadow: 
+        0 4px 8px rgba(0,0,0,0.4),
+        inset 4px 4px 6px rgba(255,255,255,0.5),
+        inset -3px -3px 5px rgba(0,0,0,0.35);
+    background-size: 200% 200%;
+    background-position: 0% 0%;
+    transition: none;
+    z-index: 10;
+}
+
+.stone.player1 {
+    background: radial-gradient(circle at 40% 40%, #ff6b6b, #c62828 60%, #b71c1c);
+}
+
+.stone.player2 {
+    background: radial-gradient(circle at 40% 40%, #4fc3f7, #0277bd 60%, #01579b);
+}
+
+/* Анимация полёта камня */
+@keyframes flyStone {
+    0%   { transform: translate(0, 0) scale(1.1); opacity: 1; }
+    40%  { transform: translate(var(--dx), var(--dy)) scale(1.3) rotate(15deg); }
+    70%  { transform: translate(var(--dx), var(--dy)) scale(0.95) rotate(-10deg); }
+    100% { transform: translate(0, 0) scale(1); opacity: 1; }
+}
+
+/* Bounce при приземлении */
+@keyframes bounceIn {
+    0%   { transform: scale(0.3); opacity: 0; }
+    50%  { transform: scale(1.15); }
+    75%  { transform: scale(0.95); }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+/* Подсветка калаха при попадании */
+.kalah-store.active {
+    animation: pulseGlow 1.2s ease-in-out;
+}
+
+@keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 0 20px rgba(255,255,255,0.3); }
+    50%      { box-shadow: 0 0 40px rgba(255,255,255,0.8); }
+}
         
         /* Анимации */
         @keyframes stoneMove {
@@ -1507,6 +1541,32 @@ app.get('/', async (req, res) => {
             justify-content: center;
             gap: 10px;
         }
+        
+        /* Контейнер для летящих камней (поверх всего) */
+#flying-stones-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+    z-index: 9999;
+}
+
+/* Улучшенный камень в полёте */
+.stone.flying {
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    transform-origin: center;
+    will-change: transform, left, top;
+}
+
+/* Анимация приземления с отскоком */
+@keyframes landBounce {
+    0%   { transform: scale(0.6) translateY(-20px); opacity: 0.6; }
+    60%  { transform: scale(1.15) translateY(5px);  opacity: 1;   }
+    80%  { transform: scale(0.95) translateY(-3px); }
+    100% { transform: scale(1) translateY(0);       }
+}
     </style>
 </head>
 <body>
@@ -1676,7 +1736,7 @@ app.get('/', async (req, res) => {
     </div>
 
     <script>
-        const SERVER_URL = 'http://localhost:3000';
+        const SERVER_URL = "${SERVER_URL}";
         
         // Состояние клиента
         const clientState = {
@@ -1875,144 +1935,141 @@ app.get('/', async (req, res) => {
         
         // Запуск анимации
 function startAnimation() {
-if (clientState.isAnimating || clientState.animationQueue.length === 0) {
-        // ← Вот здесь обновляем UI, когда анимация полностью завершена
+    if (clientState.isAnimating || clientState.animationQueue.length === 0) {
         clientState.isAnimating = false;
-        updateGameDisplay();   // статус, индикатор хода, активные/неактивные лунки
-        updateChat();          // новые сообщения в чате
+        updateGameDisplay();   // обновляем статус + индикатор хода
+        updateChat();
+        updateBoardDisplay();  // ← только в конце всей цепочки!
         return;
     }
 
     clientState.isAnimating = true;
-    const animationStep = clientState.animationQueue.shift();
+    const step = clientState.animationQueue.shift();
 
-    switch (animationStep.type) {
-        case 'pickup':
-            animatePickup(animationStep);
-            break;
-        case 'move':
-            animateStoneMove(animationStep);
-            break;
-        case 'capture':
-            animateCapture(animationStep);
-            break;
-        case 'extra_turn':
-            animateExtraTurn(animationStep);
-            break;
-        default:
-            console.warn("Неизвестный тип анимации:", animationStep.type);
+    switch (step.type) {
+        case 'pickup':     animatePickup(step); break;
+        case 'move':       animateStoneMove(step); break;
+        case 'capture':    animateCapture(step); break;
+        case 'extra_turn': animateExtraTurn(step); break;
     }
-
-    // Важно: здесь мы НЕ вызываем startAnimation() напрямую
-    // Это будет сделано из функций анимации после их завершения
 }
         
         // Анимация взятия камней
         function animatePickup(step) {
-            const pit = document.getElementById(\`pit_\${step.from}\`);
-            if (pit) {
-                pit.classList.add('animate-pulse');
-                
-                // Создаем камни для анимации
-                createAnimationStones(step.from, step.stones);
-                
-                setTimeout(() => {
-                    pit.classList.remove('animate-pulse');
-                    updateBoardDisplay();
-                    setTimeout(() => startAnimation(), 300);
-                }, 500);
-            } else {
-                setTimeout(() => startAnimation(), 300);
-            }
-            setTimeout(() => {
-        pit.classList.remove('animate-pulse');
-        updateBoardDisplay();
-        
-        // ← Вот это добавляем
-        clientState.isAnimating = false;
-        startAnimation();           // запускаем следующий шаг или завершаем
-    }, 500);
-        }
+    const pit = document.getElementById(\`pit_\${step.from}\`);
+    if (pit) {
+        pit.classList.add('active');
+        setTimeout(() => {
+            pit.classList.remove('active');
+            startAnimation();        // сразу переходим к полёту камней
+        }, 400);
+    } else {
+        startAnimation();
+    }
+}
+
         
         // Анимация перемещения камня
-        function animateStoneMove(step) {
-            const stoneId = \`stone_\${step.from}_\${step.stoneIndex}\`;
-            const stone = document.getElementById(stoneId);
-            
-            if (stone) {
-                const fromPit = document.getElementById(\`pit_\${step.from}\`);
-                const toPit = document.getElementById(\`pit_\${step.to}\`);
-                
-                if (fromPit && toPit) {
-                    const fromRect = fromPit.getBoundingClientRect();
-                    const toRect = toPit.getBoundingClientRect();
-                    
-                    // Вычисляем смещение
-                    const dx = toRect.left - fromRect.left;
-                    const dy = toRect.top - fromRect.top;
-                    
-                    // Анимируем перемещение
-                    stone.style.setProperty('--move-x', \`\${dx}px\`);
-                    stone.style.setProperty('--move-y', \`\${dy}px\`);
-                    stone.style.animation = \`stoneMove 0.5s cubic-bezier(0.4, 0, 0.2, 1) \${step.delay || 0}ms forwards\`;
-                    
-                    // После завершения анимации
-                    setTimeout(() => {
-                        if (stone.parentNode) {
-                            stone.parentNode.removeChild(stone);
-                        }
-                        updateBoardDisplay();
-                        setTimeout(() => startAnimation(), 100);
-                    }, 500 + (step.delay || 0));
-                }
-            } else {
-                setTimeout(() => startAnimation(), 100);
-            }
-            setTimeout(() => {
-        if (stone.parentNode) {
-            stone.parentNode.removeChild(stone);
-        }
-        updateBoardDisplay();
+function animateStoneMove(step) {
+    const fromPit = document.getElementById(\`pit_\${step.from}\`);
+    const toPit   = document.getElementById(\`pit_\${step.to}\`);
 
-        // ← Вот это добавляем
-        clientState.isAnimating = false;
-        startAnimation();           // следующий шаг или завершение
-    }, 500 + (step.delay || 0));
-        }
-        
-        // Анимация захвата камней
-        function animateCapture(step) {
-            // Подсвечиваем захваченные лунки
-            step.from.forEach(pitIndex => {
-                const pit = document.getElementById(\`pit_\${pitIndex}\`);
-                if (pit) pit.classList.add('animate-highlight');
-            });
-            
-            // Анимация перемещения в калах
-            setTimeout(() => {
-                step.from.forEach(pitIndex => {
-                    const pit = document.getElementById(\`pit_\${pitIndex}\`);
-                    if (pit) pit.classList.remove('animate-highlight');
-                });
-                
-                updateBoardDisplay();
-                setTimeout(() => startAnimation(), 300);
-            }, 1000);
-            
-            setTimeout(() => {
-        step.from.forEach(pitIndex => {
-            const pit = document.getElementById(\`pit_\${pitIndex}\`);
-            if (pit) pit.classList.remove('animate-highlight');
-        });
-
-        updateBoardDisplay();
-
-        // ← Вот это добавляем
-        clientState.isAnimating = false;
+    if (!fromPit || !toPit) {
         startAnimation();
-    }, 1000);
-        }
-        
+        return;
+    }
+
+    const fromRect = fromPit.getBoundingClientRect();
+    const toRect   = toPit.getBoundingClientRect();
+
+    const startX = fromRect.left + fromRect.width / 2;
+    const startY = fromRect.top  + fromRect.height / 2;
+    const endX   = toRect.left   + toRect.width / 2;
+    const endY   = toRect.top    + toRect.height / 2;
+
+    // Создаём новый камень для полёта
+    const stone = document.createElement('div');
+    stone.className = \`stone flying \${step.from < 7 ? 'player1' : 'player2'}\`;
+    stone.style.position = 'fixed';
+    stone.style.left = \`\${startX}px\`;
+    stone.style.top  = \`\${startY}px\`;
+    stone.style.transform = 'translate(-50%, -50%) scale(1.25)';
+    stone.style.zIndex = '9999';
+
+    document.getElementById('flying-stones-container').appendChild(stone);
+
+    // Задержка между камнями
+    const delay = step.stoneIndex * 80;
+
+    setTimeout(() => {
+        stone.style.transition = 'all 650ms cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+        stone.style.left = \`\${endX}px\`;
+        stone.style.top  = \`\${endY}px\`;
+        stone.style.transform = 'translate(-50%, -50%) scale(1) rotate(360deg)';
+
+        // Отскок при приземлении
+        setTimeout(() => {
+            stone.style.transition = 'all 180ms ease-out';
+            stone.style.transform = 'translate(-50%, -50%) scale(1.15)';
+        }, 650);
+
+        setTimeout(() => {
+            stone.style.transform = 'translate(-50%, -50%) scale(1)';
+        }, 830);
+
+        // Удаляем камень и запускаем следующий
+        setTimeout(() => {
+            stone.remove();
+            startAnimation();
+        }, 950);
+    }, delay);
+}
+        // Анимация захвата камней
+function animateCapture(step) {
+    const [pit1, pit2] = step.from;
+    const toStoreIndex = step.to;
+
+    const store = document.getElementById(toStoreIndex === 6 ? 'storePlayer1' : 'storePlayer2');
+    if (!store) {
+        startAnimation();
+        return;
+    }
+
+    const storeRect = store.getBoundingClientRect();
+    const endX = storeRect.left + storeRect.width / 2;
+    const endY = storeRect.top  + storeRect.height / 2;
+
+    const pits = [document.getElementById(\`pit_\${pit1}\`), document.getElementById(\`pit_\${pit2}\`)];
+
+    for (let i = 0; i < step.stones; i++) {
+        const stone = document.createElement('div');
+        stone.className = \`stone flying \${pit1 < 7 ? 'player1' : 'player2'}\`;
+        document.getElementById('flying-stones-container').appendChild(stone);
+
+        const startPit = pits[i % 2];
+        const startRect = startPit.getBoundingClientRect();
+
+        stone.style.left = \`\${startRect.left + startRect.width / 2}px\`;
+        stone.style.top  = \`\${startRect.top + startRect.height / 2}px\`;
+        stone.style.transform = 'translate(-50%, -50%) scale(1.2)';
+
+        setTimeout(() => {
+            stone.style.transition = 'all 850ms cubic-bezier(0.4, 0, 0.2, 1)';
+            stone.style.left = \`\${endX + (Math.random() * 60 - 30)}px\`;
+            stone.style.top  = \`\${endY + (Math.random() * 50 - 25)}px\`;
+            stone.style.transform = 'translate(-50%, -50%) scale(1) rotate(720deg)';
+        }, i * 70 + 300);
+
+        setTimeout(() => {
+            stone.remove();
+            if (i === step.stones - 1) startAnimation();
+        }, i * 70 + 1200);
+    }
+
+    // Подсветка лунок
+    pits.forEach(p => p?.classList.add('active'));
+    setTimeout(() => pits.forEach(p => p?.classList.remove('active')), 1400);
+}
         // Анимация дополнительного хода
         function animateExtraTurn(step) {
             const playerIndicator = document.getElementById('currentPlayerIndicator');
@@ -2368,44 +2425,56 @@ if (clientState.isAnimating || clientState.animationQueue.length === 0) {
         }
         
         // Создание камней в лунке
-        function createStonesInPit(pitIndex, count, container) {
-            const maxStonesToShow = 12; // Максимальное количество отображаемых камней
-            const stonesToShow = Math.min(count, maxStonesToShow);
-            const isPlayer1 = pitIndex < 7;
-            
-            for (let i = 0; i < stonesToShow; i++) {
-                const stone = document.createElement('div');
-                stone.className = \`stone \${isPlayer1 ? 'player1' : 'player2'}\`;
-                
-                // Случайная позиция внутри лунки
-                const angle = Math.random() * Math.PI * 2;
-                const radius = Math.random() * 35;
-                const x = Math.cos(angle) * radius;
-                const y = Math.sin(angle) * radius;
-                
-                stone.style.left = \`calc(50% + \${x}px)\`;
-                stone.style.top = \`calc(50% + \${y}px)\`;
-                stone.style.transform = \`translate(-50%, -50%)\`;
-                
-                container.appendChild(stone);
-            }
-            
-            // Если камней больше, чем показываем, добавляем индикатор
-            if (count > maxStonesToShow) {
-                const indicator = document.createElement('div');
-                indicator.className = 'stone-count-indicator';
-                indicator.textContent = \`+\${count - maxStonesToShow}\`;
-                indicator.style.position = 'absolute';
-                indicator.style.bottom = '5px';
-                indicator.style.right = '5px';
-                indicator.style.background = 'rgba(0,0,0,0.7)';
-                indicator.style.color = 'white';
-                indicator.style.padding = '2px 6px';
-                indicator.style.borderRadius = '10px';
-                indicator.style.fontSize = '0.8rem';
-                container.appendChild(indicator);
-            }
-        }
+function createStonesInPit(pitIndex, count, container) {
+    container.innerHTML = ''; // очищаем
+
+    if (count === 0) return;
+
+    const isStore = pitIndex === 6 || pitIndex === 13;
+    const maxVisible = isStore ? 35 : 16;
+    const toShow = Math.min(count, maxVisible);
+
+    const centerX = container.clientWidth / 2;
+    const centerY = container.clientHeight / 2;
+    const baseRadius = isStore ? 48 : 26;
+
+    for (let i = 0; i < toShow; i++) {
+        const stone = document.createElement('div');
+        stone.className = \`stone \${pitIndex < 7 ? 'player1' : 'player2'}\`;
+
+        // Золотой угол для красивой спирали
+        const angle = i * 137.508; // ≈ 360° / золотое сечение
+        const radius = baseRadius * (1 - Math.floor(i / 10) * 0.15); // слои уменьшаются
+
+        const x = centerX + Math.cos(angle * Math.PI / 180) * radius;
+        const y = centerY + Math.sin(angle * Math.PI / 180) * radius * 0.85;
+
+        stone.style.left = \`\${x}px\`;
+        stone.style.top  = \`\${y}px\`;
+
+        // Лёгкое вращение и размер
+        const scale = 0.9 + Math.random() * 0.2;
+        stone.style.transform = \`translate(-50%, -50%) scale(\${scale}) rotate(${Math.random() * 30 - 15}deg)\`;
+
+        container.appendChild(stone);
+    }
+
+    // +N если много
+    if (count > maxVisible) {
+        const extra = document.createElement('div');
+        extra.style.position = 'absolute';
+        extra.style.bottom = isStore ? '16px' : '10px';
+        extra.style.right = '14px';
+        extra.style.background = 'rgba(0,0,0,0.75)';
+        extra.style.color = 'white';
+        extra.style.padding = '4px 8px';
+        extra.style.borderRadius = '12px';
+        extra.style.fontSize = '12px';
+        extra.style.fontWeight = 'bold';
+        extra.textContent = \`+\${count - maxVisible}\`;
+        container.appendChild(extra);
+    }
+}
         
         // Обновление состояния лунки
         function updatePitState(pit, index, count) {
@@ -2511,6 +2580,7 @@ if (clientState.isAnimating || clientState.animationQueue.length === 0) {
             document.getElementById('playerName').focus();
         });
     </script>
+    <div id="flying-stones-container"></div>
 </body>
 </html>`;
 
@@ -2523,7 +2593,6 @@ app.listen(PORT, () => {
     console.log('🎮 ===========================================');
     console.log('🎮  Сервер Калах с анимациями запущен!');
     console.log('🎮 ===========================================');
-    console.log(`🌐  Главный интерфейс: http://localhost:\${PORT}`);
   console.log('📡  API работает на порту 3000');
   console.log('');
   console.log('✨  Особенности:');
@@ -2534,7 +2603,7 @@ app.listen(PORT, () => {
   console.log('   • 📊 Детальные логи всех событий');
   console.log('');
   console.log('🎯  Как играть:');
-  console.log('   1. Откройте http://localhost:3000 в двух вкладках');
+  console.log('   1. Откройте адрес сайта в двух вкладках');
   console.log('   2. Создайте игру в первой вкладке');
   console.log('   3. Присоединитесь по ID во второй вкладке');
   console.log('   4. Кликайте по активным лункам для хода');

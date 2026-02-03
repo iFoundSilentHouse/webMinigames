@@ -1323,10 +1323,10 @@ const PORT_API = 3000;
 const PORT_HTML = 3001;
 
 // Создаем HTTP сервер
-const server = http.createServer(app);
+const tictac = http.createServer(app);
 
 // Запускаем сервер на порту 3000 (API)
-server.listen(PORT_API, () => {
+tictac.listen(PORT_API, () => {
     console.log(`✅ API сервер запущен на порту ${PORT_API}`);
     console.log(`🌐 http://localhost:${PORT_API}`);
     console.log('📊 /stats - статистика');
