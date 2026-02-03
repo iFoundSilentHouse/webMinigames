@@ -249,7 +249,7 @@ app.post('/game/create', (req, res) => {
             players: [],
             state: {
                 board: board,
-                currentPlayer: 0,
+                currentPlayer: 1,
                 status: 'waiting',
                 winner: null,
                 scores: { player1: 0, player2: 0 },
@@ -535,6 +535,93 @@ app.post('/game/:gameId/move', (req, res) => {
     }
 });
 
+app.post('/game/:gameId/surrender', (req, res) => {
+    try {
+        const { gameId } = req.params;
+        const { playerId } = req.body;
+
+        console.log(`[SURRENDER] Запрос от ${playerId} в игре ${gameId}`);
+
+        const game = games.get(gameId);
+        if (!game) {
+            return res.status(404).json({ success: false, error: 'Игра не найдена' });
+        }
+
+        if (game.state.status !== 'playing') {
+            return res.status(400).json({ success: false, error: 'Сдаться можно только во время игры' });
+        }
+
+        const player = game.players.find(p => p.id === playerId);
+        if (!player) {
+            return res.status(400).json({ success: false, error: 'Игрок не найден' });
+        }
+
+        // Определяем победителя (противник)
+        const winnerIndex = player.playerIndex === 0 ? 1 : 0;
+        const loserName = player.name;
+        const winnerName = game.players[winnerIndex].name;
+
+        // Завершаем игру
+        game.state.status = 'finished';
+        game.state.winner = `player${winnerIndex + 1}`;
+
+        // Собираем финальные очки (как в checkGameEnd)
+        const finalBoard = [...game.state.board];
+        let player1Score = finalBoard[6];
+        let player2Score = finalBoard[13];
+
+        // Камни player1
+        for (let i = 0; i <= 5; i++) {
+            player1Score += finalBoard[i];
+            finalBoard[i] = 0;
+        }
+
+        // Камни player2
+        for (let i = 7; i <= 12; i++) {
+            player2Score += finalBoard[i];
+            finalBoard[i] = 0;
+        }
+
+        finalBoard[6] = player1Score;
+        finalBoard[13] = player2Score;
+
+        game.state.board = finalBoard;
+        game.state.scores = { player1: player1Score, player2: player2Score };
+
+        // Сообщение о сдаче
+        game.state.messages.push({
+            type: 'system',
+            text: `🕊️ ${loserName} сдался! 🏆 Победа ${winnerName} со счётом ${player1Score}:${player2Score}`,
+            timestamp: Date.now()
+        });
+
+        // История игры
+        game.gameHistory.push({
+            winner: game.state.winner,
+            scores: game.state.scores,
+            finishedAt: Date.now(),
+            reason: 'surrender',
+            players: game.players.map(p => ({ name: p.name, playerIndex: p.playerIndex }))
+        });
+
+        games.set(gameId, game);
+
+        // Рассылаем обновление
+        broadcastGameState(gameId, playerId);
+
+        console.log(`[SURRENDER] ${loserName} сдался в игре ${gameId}. Победа ${winnerName}`);
+
+        res.json({
+            success: true,
+            message: 'Вы сдались. Игра завершена, противник победил. Можно предложить реванш!'
+        });
+
+    } catch (error) {
+        console.error('[SURRENDER] Ошибка:', error);
+        res.status(500).json({ success: false, error: 'Ошибка сервера' });
+    }
+});
+
 // Предложение реванша
 app.post('/game/:gameId/rematch', (req, res) => {
     try {
@@ -597,17 +684,18 @@ app.post('/game/:gameId/rematch', (req, res) => {
             }
 
             const newGameId = `kalah_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-            const board = initializeKalahBoard();
+            const board = initializeKalahBoard()
+            console.log(game.state.currentPlayer)
 
             const newGame = {
                 id: newGameId,
                 players: game.players.map(p => ({
                     ...p,
-                    playerIndex: p.playerIndex === 0 ? 1 : 0
+                    playerIndex: p.playerIndex
                 })),
                 state: {
                     board: board,
-                    currentPlayer: 0,
+                    currentPlayer: game.state.currentPlayer,
                     status: 'playing',
                     winner: null,
                     scores: { player1: 0, player2: 0 },
@@ -683,7 +771,7 @@ app.get('/stats', (req, res) => {
 });
 
 // Главная страница с игрой (обновленный HTML с анимациями)
-app.get('/', (req, res) => {
+app.get('/', async (req, res) => {
     const html = `
 <!DOCTYPE html>
 <html lang="ru">
@@ -1396,6 +1484,29 @@ app.get('/', (req, res) => {
         .gap-4 {
             gap: 1rem;
         }
+        
+        .btn-danger {
+            background: linear-gradient(to right, var(--danger-color), #f71d44);
+            color: white;
+        }
+        
+        .surrender-card {
+            background: linear-gradient(135deg, #ffebee, #ffcdd2);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 20px;
+            border: 2px dashed var(--danger-color);
+            text-align: center;
+        }
+        
+        .surrender-card h3 {
+            color: var(--danger-color);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
     </style>
 </head>
 <body>
@@ -1445,6 +1556,14 @@ app.get('/', (req, res) => {
                             <span class="info-value" id="infoPlayerId">-</span>
                         </div>
                     </div>
+                </div>
+                
+                <div id="surrenderPanel" class="surrender-card hidden">
+                    <h3><i class="fas fa-flag-white"></i> Сдаться</h3>
+                    <p>Признайте поражение и предложите реванш</p>
+                    <button class="btn btn-danger" onclick="surrender()">
+                        <i class="fas fa-flag-white"></i> Сдаться
+                    </button>
                 </div>
                 
                 <div id="rematchPanel" class="rematch-card hidden">
@@ -2013,6 +2132,36 @@ if (clientState.isAnimating || clientState.animationQueue.length === 0) {
             }
         }
         
+        async function surrender() {
+            if (!confirm('Вы уверены, что хотите сдаться? Противник победит, но вы сможете предложить реванш.')) {
+                return;
+            }
+        
+            if (!clientState.gameId || !clientState.playerId) {
+                log('Сначала присоединитесь к игре', 'error');
+                return;
+            }
+        
+            try {
+                log('🕊️ Отправка сдачи...', 'info');
+                const response = await fetch(\`\${SERVER_URL}/game/\${clientState.gameId}/surrender\`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json; charset=utf-8' },
+                    body: JSON.stringify({ playerId: clientState.playerId })
+                });
+        
+                const data = await response.json();
+        
+                if (data.success) {
+                    log('✅ Вы сдались! Игра завершена, можно предложить реванш.', 'success');
+                } else {
+                    log(\`❌ Ошибка: \${data.error}\`, 'error');
+                }
+            } catch (error) {
+                log(\`❌ Ошибка сети: \${error.message}\`, 'error');
+            }
+        }
+        
         // Предложение реванша
         async function offerRematch() {
             if (!clientState.gameId || !clientState.playerId) return;
@@ -2119,6 +2268,13 @@ if (clientState.isAnimating || clientState.animationQueue.length === 0) {
             const kalahBoard = document.getElementById('kalahBoard');
             const rematchPanel = document.getElementById('rematchPanel');
             const currentPlayerIndicator = document.getElementById('currentPlayerIndicator');
+            
+            const surrenderPanel = document.getElementById('surrenderPanel');
+            if (clientState.gameState.status === 'playing') {
+                surrenderPanel.classList.remove('hidden');
+            } else {
+                surrenderPanel.classList.add('hidden');
+            }
             
             if (clientState.gameState) {
                 kalahBoard.style.display = 'flex';
@@ -2346,6 +2502,7 @@ if (clientState.isAnimating || clientState.animationQueue.length === 0) {
         window.joinGame = joinGame;
         window.offerRematch = offerRematch;
         window.acceptRematch = acceptRematch;
+        window.surrender = surrender;
         
         // Инициализация
         document.addEventListener('DOMContentLoaded', () => {
