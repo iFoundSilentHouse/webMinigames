@@ -1,4 +1,4 @@
-const SERVER_URL = 'http://localhost:3000';
+const SERVER_URL = window.APP_CONFIG.SERVER_URL;
         
         // Состояние клиента
         const clientState = {

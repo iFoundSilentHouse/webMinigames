@@ -2,8 +2,12 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
 
-import frontendRouter from './front/index.js';
+// Загружаем переменные окружения
+dotenv.config();
+
+import frontendRouter from './front/frontend.js';
 import gameRouter from './back/routes/gameLogic.js';
 import gameStateRouter from './back/routes/gameState.js';
 import statsRouter from './back/routes/stats.js';
@@ -12,13 +16,18 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Создаем __dirname для ES Modules
+// Настройка EJS
+app.set('view engine', 'ejs');
+// Указываем путь к шаблонам относительно текущего файла
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+app.set('views', path.join(__dirname, 'front', 'public'));
+// Статические файлы
 app.use(express.static(path.join(__dirname, 'front', 'public')));
+
 app.use('/', frontendRouter);
 
-// back
+//back
 app.use('/', gameRouter);
 app.use('/', gameStateRouter);
 app.use('/', statsRouter);
