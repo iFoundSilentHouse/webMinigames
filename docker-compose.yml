@@ -8,5 +8,5 @@ services:
     environment:
       - NODE_ENV=production
     # Когда понадобятся данные из .env:
-    # env_file:
-    #   - .env
+    env_file:
+      - .env
