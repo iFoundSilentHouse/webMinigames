@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎮 Калах (Манкала) - Анимированная игра</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Левая панель: управление -->
+        <div class="panel">
+            <div class="panel-header">
+                <i class="fas fa-gamepad"></i>
+                <h2>Управление игрой</h2>
+            </div>
+            <div class="panel-content">
+                <div class="form-group">
+                    <label class="form-label">Ваше имя:</label>
+                    <input type="text" id="playerName" class="form-input" placeholder="Введите ваше имя" value="Игрок">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">ID игры:</label>
+                    <input type="text" id="gameId" class="form-input" placeholder="Оставьте пустым для новой игры">
+                </div>
+                
+                <button class="btn btn-primary" onclick="createGame()">
+                    <i class="fas fa-plus-circle"></i> Создать новую игру
+                </button>
+                
+                <button class="btn btn-secondary" onclick="joinGame()">
+                    <i class="fas fa-sign-in-alt"></i> Присоединиться к игре
+                </button>
+                
+                <div id="playerInfo" class="hidden">
+                    <div class="player-card">
+                        <h3><i class="fas fa-user"></i> Ваш профиль</h3>
+                        <div class="player-info-item">
+                            <span class="info-label">Имя:</span>
+                            <span class="info-value" id="infoName">-</span>
+                        </div>
+                        <div class="player-info-item">
+                            <span class="info-label">Сторона:</span>
+                            <span class="info-value" id="infoSide">-</span>
+                        </div>
+                        <div class="player-info-item">
+                            <span class="info-label">ID игры:</span>
+                            <span class="info-value" id="infoGameId">-</span>
+                        </div>
+                        <div class="player-info-item">
+                            <span class="info-label">Ваш ID:</span>
+                            <span class="info-value" id="infoPlayerId">-</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="surrenderPanel" class="surrender-card hidden">
+                    <h3><i class="fas fa-flag-white"></i> Сдаться</h3>
+                    <p>Признайте поражение и предложите реванш</p>
+                    <button class="btn btn-danger" onclick="surrender()">
+                        <i class="fas fa-flag-white"></i> Сдаться
+                    </button>
+                </div>
+                
+                <div id="rematchPanel" class="rematch-card hidden">
+                    <h3><i class="fas fa-redo"></i> Реванш</h3>
+                    <p class="rematch-message" id="rematchMessage"></p>
+                    <button class="btn btn-warning" onclick="offerRematch()" id="btnOfferRematch">
+                        <i class="fas fa-fist-raised"></i> Предложить реванш
+                    </button>
+                    <button class="btn btn-success hidden" onclick="acceptRematch()" id="btnAcceptRematch">
+                        <i class="fas fa-check-circle"></i> Принять реванш
+                    </button>
+                </div>
+                
+                <div class="rules-container">
+                    <h3 class="rules-title"><i class="fas fa-book"></i> Правила Калах:</h3>
+                    <ul class="rules-list">
+                        <li>Берите камни из своей лунки</li>
+                        <li>Раскладывайте против часовой стрелки</li>
+                        <li>Попали в свой калах → дополнительный ход</li>
+                        <li>Попали в свою пустую лунку → захват камней</li>
+                        <li>Игра заканчивается, когда у игрока нет ходов</li>
+                        <li>Побеждает набравший больше камней</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Центральная панель: игровое поле -->
+        <div class="panel">
+            <div class="panel-header">
+                <i class="fas fa-chess-board"></i>
+                <h2>Игровое поле Калах</h2>
+            </div>
+            <div class="panel-content game-board-container">
+                <div class="game-status" id="gameStatus">
+                    Создайте игру или присоединитесь к существующей
+                </div>
+                
+                <div id="currentPlayerIndicator" class="current-player-indicator hidden">
+                    <div class="player-indicator-dot" id="playerIndicatorDot"></div>
+                    <span id="currentPlayerText">Сейчас ходит: </span>
+                </div>
+                
+                <div class="kalah-board" id="kalahBoard">
+                    <!-- Верхний ряд: игрок 2 -->
+                    <div class="board-row">
+                        <div class="kalah-store" id="storePlayer2">
+                            <div class="store-label">Игрок 2</div>
+                            <div class="store-count">0</div>
+                        </div>
+                        
+                        <div class="pits-container">
+                            <div class="pits-row" id="pitsPlayer2">
+                                <!-- Лунки игрока 2 (7-12) -->
+                            </div>
+                        </div>
+                        
+                        <div class="kalah-store" id="storePlayer1">
+                            <div class="store-label">Игрок 1</div>
+                            <div class="store-count">0</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Нижний ряд: игрок 1 -->
+                    <div class="board-row">
+                        <div style="flex: 0 0 120px;"></div> <!-- Пустое место для симметрии -->
+                        
+                        <div class="pits-container">
+                            <div class="pits-row" id="pitsPlayer1">
+                                <!-- Лунки игрока 1 (0-5) -->
+                            </div>
+                        </div>
+                        
+                        <div style="flex: 0 0 120px;"></div> <!-- Пустое место для симметрии -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Правая панель: чат и логи -->
+        <div class="panel">
+            <div class="panel-header">
+                <i class="fas fa-comments"></i>
+                <h2>Чат и логи</h2>
+            </div>
+            <div class="panel-content chat-container">
+                <div class="messages-container" id="chatMessages">
+                    <!-- Сообщения будут здесь -->
+                </div>
+                
+                <div class="chat-input-container">
+                    <input type="text" id="chatInput" class="chat-input" placeholder="Введите сообщение..." 
+                           onkeypress="if(event.key === 'Enter') sendMessage()">
+                    <button class="btn btn-primary" onclick="sendMessage()">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+                
+                <div class="logs-container">
+                    <div class="logs-header">
+                        <i class="fas fa-terminal"></i>
+                        <h3>Лог событий</h3>
+                    </div>
+                    <div class="logs-content" id="logContainer">
+                        <!-- Логи будут здесь -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+    <div id="flying-stones-container"></div>
+</body>
+</html>

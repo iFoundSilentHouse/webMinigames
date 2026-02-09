@@ -2,14 +2,18 @@
   "name": "tictactoe",
   "version": "1.0.0",
   "description": "",
-  "main": "tictac.js",
+  "main": "kalah/app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "nodemon kalah/app.js",
+    "start": "node kalah/app.js"
   },
   "private": true,
   "dependencies": {
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
     "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
   }
 }
