@@ -7,6 +7,7 @@ To run locally:
 2) `cd webMinigames`
 3) `docker compose up`
 4) open http://localhost:3004 and play!
+
 To play over web:
 1) `git clone https://github.com/iFoundSilentHouse/webMinigames.git`
 2) `cd webMinigames`
