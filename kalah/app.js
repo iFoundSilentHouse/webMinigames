@@ -24,12 +24,12 @@ app.use('/', gameStateRouter);
 app.use('/', statsRouter);
 
 // Запуск сервера
-const PORT = 3000;
+const PORT = 3004;
 app.listen(PORT, () => {
     console.log('🎮 ===========================================');
     console.log('🎮  Сервер Калах с анимациями запущен!');
     console.log('🎮 ===========================================');
-  console.log('📡  API работает на порту 3000');
+  console.log('📡  API работает на порту 3004');
   console.log('');
   console.log('✨  Особенности:');
   console.log('   • 🎨 Современный красивый интерфейс');
